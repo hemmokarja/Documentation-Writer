@@ -1,0 +1,25 @@
+[tool.poetry]
+name = "documentation-writer"
+version = "0.1.0"
+description = ""
+authors = ["Hemmo Karja <hemmo.karja@sok.fi>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "~3.9"
+langchain-openai = "^0.1.22"
+langchain-core = "^0.2.34"
+langgraph = "^0.2.11"
+langchain = "^0.2.14"
+requests = "^2.32.3"
+structlog = "^24.4.0"
+numpy = "<2.0"
+dill = "^0.3.8"
+
+[tool.poetry.group.dev.dependencies]
+ipykernel = "^6.29.5"
+isort = "^5.13.2"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
