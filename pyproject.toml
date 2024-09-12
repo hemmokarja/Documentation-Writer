@@ -15,6 +15,7 @@ requests = "^2.32.3"
 structlog = "^24.4.0"
 numpy = "<2.0"
 dill = "^0.3.8"
+regex = "2024.7.24"
 
 [tool.poetry.group.dev.dependencies]
 ipykernel = "^6.29.5"
