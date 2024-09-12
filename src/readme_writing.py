@@ -1,8 +1,12 @@
+from typing import Union
+
 import dill
 import structlog
 from langchain_core.pydantic_v1 import BaseModel, Field
 
 import util
+from cfg import Config
+from directory_parsing import DirectoryTree
 from util import ToolCallingAssistant, ToolCallingException
 
 logger = structlog.get_logger(__name__)
@@ -18,10 +22,16 @@ class ReadMeWritingTool(BaseModel):
 
 
 class ReadMeWriter(ToolCallingAssistant):
-    def __init__(self, system_prompt, tools, config, max_tool_call_retries=5):
+    def __init__(
+        self,
+        system_prompt: str,
+        tools: ReadMeWritingTool,
+        config: Config,
+        max_tool_call_retries: int = 5
+    ) -> None:
         super().__init__(system_prompt, tools, config, max_tool_call_retries)
 
-    def __call__(self, state):
+    def __call__(self, state: dict) -> dict:
         user_context = state["user_context"]
         feature_summary = state["feature_summary"]
         setup_instructions = state["setup_instructions"]
@@ -63,24 +73,24 @@ class ReadMeWriter(ToolCallingAssistant):
         return {"readme": readme}
 
 
-def _find_lincense_summary(directory_tree):
+def _find_lincense_summary(directory_tree: DirectoryTree) -> Union[str, None]:
     """
-    Finds and returns the summary of a license file from a directory tree.
+    Searches for and retrieves the summary of a license file from a directory tree.
 
-    This function iterates over the file nodes in a given directory tree to locate a
-    file node that is identified as a license. If such a node is found, it returns the
-    summary of the license file. If no license file is found, it returns None.
+    This function traverses the file nodes within a given directory tree to identify a
+    file node marked as a license. Upon finding such a node, it returns the summary of
+    the license file. If no license file is detected, the function returns None.
 
     Parameters
     ----------
-    directory_tree : object
-        An object representing the directory tree, which must have a method to yield
-    file nodes.
+    directory_tree : DirectoryTree
+        An instance of `DirectoryTree` that provides a method to traverse and yield file
+    nodes.
 
     Returns
     -------
-    str or None
-        The summary of the license file if found, otherwise None.
+    Union[str, None]
+        The summary of the license file if a license node is found, otherwise None.
     """
     for node in util.directory_tree_file_nodes(directory_tree):
         if node.is_license:
@@ -89,34 +99,37 @@ def _find_lincense_summary(directory_tree):
 
 
 def _compose_readme_writer_message(
-    user_context,
-    feature_summary,
-    setup_instructions,
-    usage_instructions,
-    license_summary,
-):
+    user_context: Union[str, None],
+    feature_summary: Union[str, None],
+    setup_instructions: Union[str, None],
+    usage_instructions: Union[str, None],
+    license_summary: Union[str, None],
+) -> str:
     """
     Composes a README writer message by concatenating various sections of information.
 
+    This function takes optional strings for user context, feature summary, setup
+    instructions, usage instructions, and license summary, and constructs a message by
+    appending each non-None section with appropriate headers.
+
     Parameters
     ----------
-    user_context : str or None
-        A high-level context of the repository provided by the user. If None, this
-    section is omitted.
-    feature_summary : str or None
-        A summary of the features of the repository. If None, this section is omitted.
-    setup_instructions : str or None
-        Instructions for setting up the repository. If None, this section is omitted.
-    usage_instructions : str or None
-        Instructions on how to use the repository. If None, this section is omitted.
-    license_summary : str or None
-        A summary of the repository's license. If None, this section is omitted.
+    user_context : Union[str, None]
+        A high-level context of the repository provided by the user.
+    feature_summary : Union[str, None]
+        A summary of the features of the repository.
+    setup_instructions : Union[str, None]
+        Instructions on how to set up the repository.
+    usage_instructions : Union[str, None]
+        Instructions on how to use the repository.
+    license_summary : Union[str, None]
+        A summary of the repository's license.
 
     Returns
     -------
     str
-        A composed message containing the provided sections, formatted for inclusion in
-    a README file.
+        A composed message containing the provided sections with headers, followed by a
+    prompt to use the tool provided.
     """
     message = ""
 

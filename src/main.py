@@ -7,19 +7,26 @@ from directory_parsing import DirectoryTree
 from util import Repository
 
 
-def parse_args():
+def parse_args() -> argparse.Namespace:
     """
     Parses command-line arguments for configuring the documentation generation process.
 
     This function sets up an argument parser to handle various command-line options that
-    control the behavior of the documentation writer. It includes options for specifying
-    the directory to process, user context, return mode, model settings, output
-    formatting, and integration with LangSmith and LangChain.
+    control the behavior of the documentation writer. It defines arguments for
+    specifying the directory to process, user context, return mode, and other
+    configuration settings related to model inference and output formatting. The parsed
+    arguments are returned as a Namespace object.
 
     Returns
     -------
     argparse.Namespace
         An object containing the parsed command-line arguments as attributes.
+
+    Raises
+    ------
+    SystemExit
+        If the parsing of command-line arguments fails, typically due to invalid input
+    or missing required arguments.
     """
     parser = argparse.ArgumentParser()
 
@@ -129,32 +136,23 @@ def parse_args():
     return parser.parse_args()
 
 
-def run():
+def run() -> None:
     """
-    Executes the main process of the documentation generation application.
+    Executes the main workflow for generating documentation from a code repository.
 
-    This function orchestrates the entire workflow of the documentation generation
-    process. It begins by parsing command-line arguments to configure the application
-    settings. It then initializes a `Config` object with these settings and constructs a
-    `DirectoryTree` to represent the file structure of the specified directory. The
-    directory tree is parsed to identify the structure and contents of the directory. A
-    `CallGraph` is then created and populated by parsing the directory tree to map
-    function calls and relationships. A `Repository` object is instantiated to
-    encapsulate the directory tree and call graph. Finally, a `DocumentationWriter`
-    application is initialized and executed to process the repository and generate
-    documentation based on the configuration.
-
-    Parameters
-    ----------
-    None
+    This function orchestrates the process of parsing command-line arguments,
+    configuring the environment, and executing the documentation generation application.
+    It initializes the configuration using parsed arguments, constructs a directory tree
+    and call graph from the specified directory, and creates a repository object. The
+    function then instantiates a `DocumentationWriter` application and runs it with the
+    repository and configuration, determining whether to modify existing files or create
+    new ones based on the configuration settings.
 
     Returns
     -------
     None
-
-    Raises
-    ------
-    None
+        This function does not return any value; it performs operations to generate
+    documentation based on the provided configuration and repository.
     """
     args = parse_args()
     config = Config(

@@ -1,6 +1,7 @@
 import os
 from collections import deque
 from pathlib import Path
+from typing import Iterator, List, Tuple, Union
 
 SKIP_DIRS = [
     ".venv",
@@ -25,39 +26,9 @@ SKIP_EXTENSIONS = [
 ]
 
 
-def _parse_module_name(directory, filepath):
+def _is_py_file(name: str) -> bool:
     """
-    Parses the module name from a given file path relative to a specified directory.
-
-    Parameters
-    ----------
-    directory : str or Path
-        The base directory from which the file path is relative.
-    filepath : str or Path
-        The full path to the Python file for which the module name is to be determined.
-
-    Returns
-    -------
-    str
-        The module name derived from the file path, formatted as a Python module path
-    with dots instead of slashes and without the '.py' extension.
-
-    Raises
-    ------
-    ValueError
-        If the filepath is not relative to the directory.
-    """
-    # TODO käytä tai poista
-    filepath = Path(filepath)
-    directory = Path(directory)
-    module_path = str(filepath.relative_to(directory))
-    module_name = module_path.replace(".py", "").replace("/", ".")
-    return module_name
-
-
-def _is_py_file(name):
-    """
-    Checks if a given filename corresponds to a Python file.
+    Checks if a given filename has a Python file extension.
 
     Parameters
     ----------
@@ -67,13 +38,13 @@ def _is_py_file(name):
     Returns
     -------
     bool
-        True if the file name ends with the '.py' extension, indicating it is a Python
-    file; otherwise, False.
+        True if the file name ends with '.py', indicating it is a Python file;
+    otherwise, False.
     """
     return name.endswith(".py")
 
 
-def _is_text_file(name):
+def _is_text_file(name: str) -> bool:
     """
     Determines if a given file name corresponds to a text file based on its extension.
 
@@ -91,14 +62,14 @@ def _is_text_file(name):
     return name.endswith(".txt")
 
 
-def _is_license(name):
+def _is_license(name: str) -> bool:
     """
-    Checks if the given name matches the string 'LICENSE'.
+    Determines if a given name corresponds to a license file.
 
     Parameters
     ----------
     name : str
-        The name to be checked against the string 'LICENSE'.
+        The name to check against the standard license file name.
 
     Returns
     -------
@@ -109,7 +80,7 @@ def _is_license(name):
 
 
 class FileNode:
-    def __init__(self, path, content):
+    def __init__(self, path: str, content: str) -> None:
         self.path = path
         self.content = content
         self.name = os.path.basename(path)
@@ -123,14 +94,21 @@ class FileNode:
     def __repr__(self):
         return f"FileNode(path={self.path})"
 
-    def add_file_summary(self, summary):
+    def add_file_summary(self, summary: str) -> None:
         """
         Assigns a summary to the FileNode instance.
+
+        This method sets the `summary` attribute of the FileNode instance to the
+        provided string, ensuring that the input is of the correct type.
 
         Parameters
         ----------
         summary : str
-            A string representing the summary of the file.
+            A string representing the summary to be associated with the file.
+
+        Returns
+        -------
+        None
 
         Raises
         ------
@@ -141,7 +119,7 @@ class FileNode:
             raise RuntimeError("FileNode summary must be of type `str`")
         self.summary = summary
 
-    def mark_whether_setup_file(self, is_setup_file):
+    def mark_whether_setup_file(self, is_setup_file: bool) -> None:
         """
         Marks the file as a setup file based on the provided input.
 
@@ -152,19 +130,23 @@ class FileNode:
         is provided, it is converted to a boolean by checking if it matches common true
         values ('true', 't', 'yes', 'y').
 
+        Returns
+        -------
+        None
+
         Raises
         ------
-        TypeError
-            If `is_setup_file` is neither a boolean nor a string.
+        None
         """
         if isinstance(is_setup_file, bool):
             self.is_setup_file = is_setup_file
         elif isinstance(is_setup_file, str):
+            # shouldn't be str but check for good measure
             self.is_setup_file = (
                 is_setup_file.lower() in ["true", "t", "yes", "y"]
             )
 
-    def mark_whether_entrypoint_file(self, is_entrypoint_file):
+    def mark_whether_entrypoint_file(self, is_entrypoint_file: bool) -> None:
         """
         Marks the file as an entry point file based on the provided input.
 
@@ -175,10 +157,13 @@ class FileNode:
         string is provided, it is converted to a boolean by checking if it matches
         common true values ('true', 't', 'yes', 'y').
 
+        Returns
+        -------
+        None
+
         Raises
         ------
-        TypeError
-            If `is_entrypoint_file` is neither a boolean nor a string.
+        None
         """
         if isinstance(is_entrypoint_file, bool):
             self.is_entrypoint_file = is_entrypoint_file
@@ -189,7 +174,7 @@ class FileNode:
 
 
 class DirectoryNode:
-    def __init__(self, path):
+    def __init__(self, path: str) -> None:
         self.path = path
         self.name = os.path.basename(path)
         self.children = []
@@ -197,20 +182,25 @@ class DirectoryNode:
     def __repr__(self):
         return f"DirectoryNode(path={self.path})"
 
-    def add_child_to_directory(self, node):
+    def add_child_to_directory(self, node: Union[FileNode, "DirectoryNode"]) -> None:
         """
-        Adds a child node to the directory node's list of children.
+        Adds a child node to the directory's list of children.
+
+        This method appends a given node, which can be either a FileNode or another
+        DirectoryNode, to the children list of the current DirectoryNode instance. This
+        is used to build a hierarchical structure of directories and files.
 
         Parameters
         ----------
-        node : DirectoryNode or FileNode
-            The node to be added as a child to the current directory node.
+        node : Union[FileNode, DirectoryNode]
+            The node to be added as a child to the current directory. It can be a file
+        or another directory.
         """
         self.children.append(node)
 
 
 class DirectoryTree:
-    def __init__(self):
+    def __init__(self) -> None:
         self.root_directory = None
         self.root_node = None
         self.git_in_use = False
@@ -218,20 +208,17 @@ class DirectoryTree:
     def __repr__(self):
         return f"DirectoryTree(dir={self.root_directory})"
 
-    def _parse_directory(self, path):
+    def _parse_directory(self, path: str) -> Union[DirectoryNode, None]:
         """
-        Recursively parses a directory and constructs a tree of directory and file
-        nodes.
+        Recursively parses a directory and constructs a tree of DirectoryNode and
+        FileNode objects.
 
         This method traverses the directory specified by the given path, creating a
         DirectoryNode for each directory and a FileNode for each file. It skips
-        directories
-        and files specified in the SKIP_DIRS, SKIP_FILES, and SKIP_EXTENSIONS lists. If
-        a
-        subdirectory is encountered, the method is called recursively to parse it. Files
-        are
-        read and their contents are stored in FileNode objects. The method returns a
-        DirectoryNode representing the root of the parsed directory tree.
+        directories and files specified in the SKIP_DIRS, SKIP_FILES, and
+        SKIP_EXTENSIONS lists. If a directory is not accessible due to permissions, it
+        returns None. The method also checks for the presence of a '.git' directory to
+        set the git_in_use flag.
 
         Parameters
         ----------
@@ -240,10 +227,9 @@ class DirectoryTree:
 
         Returns
         -------
-        DirectoryNode or None
-            A DirectoryNode representing the parsed directory tree, or None if the path
-        is
-            not a directory or if a PermissionError is encountered.
+        Union[DirectoryNode, None]
+            A DirectoryNode representing the parsed directory and its contents, or None
+        if the directory is not accessible or does not exist.
         """
         if not os.path.isdir(path):
             return None
@@ -282,41 +268,38 @@ class DirectoryTree:
 
         return directory_node
 
-    def parse_tree(self, root_directory):
+    def parse_tree(self, root_directory: str) -> None:
         """
-        Parses the directory tree starting from the specified root directory and
-        initializes the root node of the tree.
+        Parses the directory tree starting from the specified root directory.
 
-        This method sets the root directory of the DirectoryTree instance and uses the
-        _parse_directory method to recursively parse the directory structure, creating a
-        tree of DirectoryNode and FileNode objects. The root node of this tree is stored
-        in the root_node attribute.
+        This method initializes the directory tree parsing process by setting the root
+        directory and invoking the internal method `_parse_directory` to construct a
+        tree of `DirectoryNode` and `FileNode` objects. The resulting tree structure is
+        stored in the `root_node` attribute of the `DirectoryTree` instance.
 
         Parameters
         ----------
         root_directory : str
-            The path to the root directory from which to start parsing the directory
-        tree.
+            The path to the root directory from which the directory tree parsing begins.
         """
         self.root_directory = root_directory
         self.root_node = self._parse_directory(self.root_directory)
 
-    def walk(self):
+    def walk(self) -> Iterator[Tuple[str, List[DirectoryNode], List[FileNode]]]:
         """
-        Traverses the directory tree starting from the root node and yields the path,
-        subdirectories, and files for each directory.
+        Traverses the directory tree starting from the root node and yields information
+        about each directory.
 
-        This method performs a breadth-first traversal of the directory tree, using a
-        queue to manage the nodes to be visited. For each directory node, it separates
-        its children into subdirectories and files, then yields the directory's path
-        along with lists of its subdirectories and files.
+        This method performs a breadth-first traversal of the directory tree, starting
+        from the root node. For each directory encountered, it yields a tuple containing
+        the directory's path, a list of its subdirectories, and a list of its files. The
+        traversal continues until all directories in the tree have been visited.
 
-        Yields
-        ------
-        tuple
-            A tuple containing the path of the current directory (str), a list of
-        subdirectory nodes (list of DirectoryNode), and a list of file nodes (list of
-        FileNode).
+        Returns
+        -------
+        Iterator[Tuple[str, List[DirectoryNode], List[FileNode]]]
+            An iterator that yields tuples, each containing the path of a directory, a
+        list of its subdirectory nodes, and a list of its file nodes.
         """
         if not self.root_node:
             return
@@ -340,51 +323,65 @@ class DirectoryTree:
             queue.extend(subdirs)
 
 
-def construct_new_py_directories(directory_tree, readme, path):
+def construct_new_py_directories(
+    directory_tree: DirectoryTree, readme: str, path: str
+) -> None:
     """
     Constructs a new Python project directory structure based on a given directory tree.
 
-    This function takes a directory tree representation and creates the corresponding
-    directory and file structure on the filesystem. It uses a helper function to
-    recursively create directories and files. Additionally, it writes a README file at
-    the root of the newly created directory structure.
+    This function takes a directory tree representation and a README content string,
+    then creates the corresponding directory and file structure on the filesystem at the
+    specified path. It ensures that all directories and files are created as per the
+    structure defined in the directory tree. If the directory tree does not have a root
+    node, it raises a RuntimeError.
 
     Parameters
     ----------
     directory_tree : DirectoryTree
         The directory tree object representing the structure to be created.
     readme : str
-        The content to be written into the README.md file at the root of the directory.
+        The content to be written into a README.md file in the root of the new directory
+    structure.
     path : str
-        The root path where the new directory structure should be created.
+        The filesystem path where the new directory structure should be created.
+
+    Returns
+    -------
+    None
 
     Raises
     ------
     RuntimeError
-        If the directory tree does not have a root node, indicating that it has not been
-    properly parsed or initialized.
+        If the directory tree does not have a root node, indicating that the tree has
+    not been parsed.
     """
 
-    def _create_directory(node, parent_path):
+    def _create_directory(
+        node: Union[DirectoryNode, FileNode], parent_path: str
+    ) -> None:
         """
-        Recursively creates a directory structure and files based on the given node.
+        Recursively creates directories and files based on the given node structure.
 
-        This function checks if the provided node is a directory or a file. If it is a
-        directory, it creates the directory at the specified parent path and recursively
-        processes its children. If it is a file, it creates the file at the specified
-        path and writes its content.
+        This function traverses a node structure, which can consist of directories and
+        files, and creates the corresponding directories and files on the filesystem. If
+        the node is a directory, it creates the directory and recursively processes its
+        children. If the node is a file, it creates the file and writes its content.
 
         Parameters
         ----------
-        node : DirectoryNode or FileNode
+        node : Union[DirectoryNode, FileNode]
             The node representing either a directory or a file to be created.
         parent_path : str
-            The path where the directory or file should be created.
+            The path to the parent directory where the node should be created.
+
+        Returns
+        -------
+        None
 
         Raises
         ------
         OSError
-            If the directory or file cannot be created due to system-related errors.
+            If an error occurs while creating directories or files on the filesystem.
         """
         if isinstance(node, DirectoryNode):
             current_path = os.path.join(parent_path, node.name)
@@ -408,23 +405,26 @@ def construct_new_py_directories(directory_tree, readme, path):
         )
 
 
-def modify_existing_py_files(directory_tree, readme, path):
+def modify_existing_py_files(
+    directory_tree: DirectoryTree, readme: str, path: str
+) -> None:
     """
     Modifies existing Python files in a directory tree and updates the README file.
 
     This function traverses a given directory tree, modifying the content of each Python
-    file by overwriting it with the content stored in the corresponding node. It also
-    updates the README file at the specified path with the provided content. If the
+    file by overwriting it with the content stored in the corresponding file node. It
+    also updates the README file at the specified path with the provided content. If the
     directory tree does not have a root node, a RuntimeError is raised.
 
     Parameters
     ----------
     directory_tree : DirectoryTree
-        The directory tree containing nodes representing directories and files.
+        The directory tree containing nodes representing directories and files to be
+    modified.
     readme : str
         The content to be written to the README.md file.
     path : str
-        The path where the README.md file should be updated.
+        The path where the README.md file is located.
 
     Raises
     ------
@@ -437,7 +437,7 @@ def modify_existing_py_files(directory_tree, readme, path):
         If an OS-related error occurs during file modification.
     """
 
-    def _modify_files(node):
+    def _modify_files(node: Union[DirectoryNode, FileNode]) -> None:
         """
         Recursively modifies Python files within a directory tree node.
 
@@ -445,14 +445,14 @@ def modify_existing_py_files(directory_tree, readme, path):
         node is a directory, it recursively processes each child node. If the node is a
         Python file, it attempts to open the file in write mode and overwrite its
         content with the content stored in the node. If an error occurs during file
-        modification, it prints an error message and raises the exception.
+        modification, an error message is printed, and the exception is raised.
 
         Parameters
         ----------
-        node : DirectoryNode or FileNode
-            The node representing either a directory or a file in the directory tree. If
-        it is a directory, its children are recursively processed. If it is a file, it
-        is modified if it is a Python file.
+        node : Union[DirectoryNode, FileNode]
+            The node representing either a directory or a file. If it is a directory,
+        its children will be processed recursively. If it is a file, it will be modified
+        if it is a Python file.
 
         Raises
         ------

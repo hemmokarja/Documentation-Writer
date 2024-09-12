@@ -1,7 +1,12 @@
+from typing import List, Union
+
 import dill
 import structlog
 from langchain_core.pydantic_v1 import BaseModel, Field
 
+from call_graph_parsing import CallGraph
+from cfg import Config
+from directory_parsing import FileNode
 from util import ToolCallingAssistant, ToolCallingException
 
 logger = structlog.get_logger(__name__)
@@ -19,10 +24,16 @@ class UsageInstructionTool(BaseModel):
 
 
 class UsageInstructor(ToolCallingAssistant):
-    def __init__(self, system_prompt, tools, config, max_tool_call_retries=5):
+    def __init__(
+        self,
+        system_prompt: str,
+        tools: UsageInstructionTool,
+        config: Config,
+        max_tool_call_retries: int = 5
+    ) -> None:
         super().__init__(system_prompt, tools, config, max_tool_call_retries)
 
-    def __call__(self, state):
+    def __call__(self, state: dict) -> dict:
         repository = dill.loads(state["repository"])
         entrypoint_file_nodes = _get_entrypoint_file_nodes(repository.call_graph)
         if not entrypoint_file_nodes:
@@ -50,23 +61,23 @@ class UsageInstructor(ToolCallingAssistant):
         return {"usage_instructions": usage_instructions}
 
 
-def _get_entrypoint_file_nodes(call_graph):
+def _get_entrypoint_file_nodes(call_graph: CallGraph) -> List[FileNode]:
     """
-    Identify and return a set of entry point file nodes from the call graph.
+    Retrieve a list of file nodes that are entry points in the call graph.
 
-    This function iterates over the entry point nodes in the call graph, as retrieved by
-    the `get_entrypoints` method, and collects those nodes whose associated file nodes
-    are marked as entry point files.
+    This function iterates over all entry point nodes in the provided call graph and
+    collects the file nodes that are marked as entry point files. An entry point file is
+    identified by the `is_entrypoint_file` attribute of the file node.
 
     Parameters
     ----------
     call_graph : CallGraph
-        The call graph from which entry point file nodes are to be identified.
+        The call graph from which to retrieve entry point file nodes.
 
     Returns
     -------
-    set of FileNode
-        A set of file nodes that are marked as entry point files in the call graph.
+    List[FileNode]
+        A list of FileNode objects that are entry point files in the call graph.
     """
     entrypoint_file_nodes = set()
     for function_node in call_graph.get_entrypoints():
@@ -76,31 +87,30 @@ def _get_entrypoint_file_nodes(call_graph):
 
 
 def _compose_usage_instructor_message_from_nodes(
-    entrypoint_file_nodes, setup_instructions
+    entrypoint_file_nodes: List[FileNode], setup_instructions: Union[str, None]
 ):
     """
     Composes a usage instruction message from a list of file nodes and optional setup
     instructions.
 
-    This function constructs a message string that includes setup instructions, if
-    provided, and the content of each file node. Each file node's content is wrapped
-    with markers indicating the start and end of the file content. The message concludes
-    with a prompt to use the provided tool.
+    This function constructs a message by concatenating setup instructions, if provided,
+    and the content of each file node. The message is formatted with specific markers
+    indicating the start and end of setup instructions and each file's content.
 
     Parameters
     ----------
-    entrypoint_file_nodes : list
-        A list of file nodes, where each node contains a 'path' and 'content' attribute
-    representing the file's path and its content, respectively.
-    setup_instructions : str or None
+    entrypoint_file_nodes : List[FileNode]
+        A list of FileNode objects, each representing a file with a path and content to
+    be included in the message.
+    setup_instructions : Union[str, None]
         Optional setup instructions to be included at the beginning of the message. If
     None, no setup instructions are added.
 
     Returns
     -------
     str
-        A formatted message string containing the setup instructions and file contents,
-    ready for display or further processing.
+        A formatted message containing the setup instructions and the content of each
+    file node, with specific markers for clarity.
     """
     message = ""
     if setup_instructions is not None:

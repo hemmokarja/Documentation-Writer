@@ -59,5 +59,6 @@ DUNDER_METHODS = [
     "__setstate__",
     "__getstate__",
     "__sizeof__",
-    "__subclasshook__"
+    "__subclasshook__",
+    "__post_init__"
 ]

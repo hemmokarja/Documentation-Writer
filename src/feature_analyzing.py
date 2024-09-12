@@ -1,8 +1,12 @@
+from typing import List, Union
+
 import dill
 import structlog
 from langchain_core.pydantic_v1 import BaseModel, Field
 
 import util
+from cfg import Config
+from directory_parsing import DirectoryTree, FileNode
 from util import ToolCallingAssistant, ToolCallingException
 
 logger = structlog.get_logger(__name__)
@@ -20,10 +24,16 @@ class FeatureAnalyzingTool(BaseModel):
 
 
 class FeatureAnalyzer(ToolCallingAssistant):
-    def __init__(self, system_prompt, tools, config, max_tool_call_retries=5):
+    def __init__(
+        self,
+        system_prompt: str,
+        tools: FeatureAnalyzingTool,
+        config: Config,
+        max_tool_call_retries: int = 5
+    ) -> None:
         super().__init__(system_prompt, tools, config, max_tool_call_retries)
 
-    def __call__(self, state):
+    def __call__(self, state: dict) -> dict:
         user_context = state["user_context"]
         repository = dill.loads(state["repository"])
         py_file_nodes = _get_py_file_nodes(repository.directory_tree)
@@ -43,25 +53,25 @@ class FeatureAnalyzer(ToolCallingAssistant):
         return {"feature_summary": feature_summary}
 
 
-def _get_py_file_nodes(directory_tree):
+def _get_py_file_nodes(directory_tree: DirectoryTree) -> List[FileNode]:
     """
-    Extracts Python file nodes from a directory tree.
+    Extracts and returns a list of Python file nodes from a given directory tree.
 
-    This function iterates over all file nodes in the given directory tree and collects
-    those that are Python files. It utilizes the `directory_tree_file_nodes` function to
-    access each file node and checks if the node represents a Python file by evaluating
-    the `is_py_file` attribute.
+    This function iterates over all file nodes in the provided directory tree and
+    filters out those that represent Python files. It utilizes the
+    `directory_tree_file_nodes` function to access all file nodes and checks each node's
+    `is_py_file` attribute to determine if it is a Python file.
 
     Parameters
     ----------
-    directory_tree : object
-        An object representing the directory tree, which must have a `walk` method that
-    yields directory paths, subdirectories, and file nodes.
+    directory_tree : DirectoryTree
+        An instance of `DirectoryTree` from which Python file nodes are to be extracted.
 
     Returns
     -------
-    list of FileNode
-        A list of file nodes that represent Python files within the directory tree.
+    List[FileNode]
+        A list of `FileNode` objects that represent Python files within the directory
+    tree.
     """
     py_file_nodes = []
     for node in util.directory_tree_file_nodes(directory_tree):
@@ -70,27 +80,32 @@ def _get_py_file_nodes(directory_tree):
     return py_file_nodes
 
 
-def _compose_feature_analyzer_message_from_nodes(py_file_nodes, user_context):
+def _compose_feature_analyzer_message_from_nodes(
+    py_file_nodes: List[FileNode], user_context: Union[str, None]
+) -> str:
     """
-    Constructs a feature analyzer message from a list of Python file nodes and optional
-    user context.
+    Composes a feature analyzer message from a list of file nodes and optional user
+    context.
 
-    This function generates a message that includes a user-provided context about the
-    repository, if available, followed by summaries of each Python file node. The
-    message concludes with a prompt to use a specific tool.
+    This function constructs a message string that includes summaries of Python files
+    represented by `FileNode` objects. If a user context is provided, it is included at
+    the beginning of the message. Each file node's path and summary are appended to the
+    message, followed by a prompt to use the provided tool.
 
     Parameters
     ----------
-    py_file_nodes : list
-        A list of nodes, where each node represents a Python file and contains a 'path'
-    and 'summary'.
-    user_context : str or None
-        An optional string providing high-level context about the repository.
+    py_file_nodes : List[FileNode]
+        A list of `FileNode` objects, each representing a Python file with a path and
+    summary.
+    user_context : Union[str, None]
+        An optional string providing high-level context about the repository. If None,
+    no context is added.
 
     Returns
     -------
     str
-        A composed message string that includes the user context and file summaries.
+        A composed message string containing the user context (if provided) and
+    summaries of the specified file nodes.
     """
     message = ""
 

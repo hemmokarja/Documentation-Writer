@@ -1,10 +1,17 @@
 import os
+from typing import Iterator, List
 
 import structlog
-from langchain.schema import HumanMessage, SystemMessage
+from langchain.schema import AIMessage, HumanMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.prompts.chat import MessagesPlaceholder
+from langchain_core.pydantic_v1 import BaseModel
+from langchain_core.runnables import Runnable
 from langchain_openai import ChatOpenAI
+
+from call_graph_parsing import CallGraph
+from cfg import Config
+from directory_parsing import DirectoryTree, FileNode
 
 logger = structlog.get_logger(__name__)
 
@@ -12,7 +19,7 @@ logger = structlog.get_logger(__name__)
 class Repository:
     # wrapper for passing directory tree and call graph between langgraph nodes in
     # serialized format while preserving the references between shared FileNodes
-    def __init__(self, directory_tree, call_graph):
+    def __init__(self, directory_tree: DirectoryTree, call_graph: CallGraph) -> None:
         self.directory_tree = directory_tree
         self.call_graph = call_graph
 
@@ -22,7 +29,13 @@ class ToolCallingException(BaseException):
 
 
 class ToolCallingAssistant:
-    def __init__(self, system_prompt_path, tools, config, max_tool_call_retries=5):
+    def __init__(
+        self,
+        system_prompt_path: str,
+        tools: BaseModel,
+        config: Config,
+        max_tool_call_retries: int = 5
+    ) -> None:
         if not isinstance(tools, list):
             tools = [tools]
 
@@ -35,15 +48,15 @@ class ToolCallingAssistant:
         )
         self.subclass_name = type(self).__name__
 
-    def invoke(self, message_content):
+    def invoke(self, message_content: str) -> AIMessage:
         """
-        Attempts to invoke a tool using a message content, retrying if necessary.
+        Attempts to invoke a tool using the provided message content, retrying if
+        necessary.
 
-        This method sends a message to a tool and expects a response with a single tool
-        call. If the response contains zero or more than one tool call, it logs a
-        warning and retries the invocation up to a maximum number of retries. If the
-        tool call is successful, it returns the response. If all retries fail, it raises
-        a ToolCallingException.
+        This method sends a message to a tool and expects a single tool call in
+        response. If the tool call fails or results in multiple calls, it retries up to
+        a specified maximum number of attempts. If the tool call is successful, it
+        returns the response. If all attempts fail, it raises a ToolCallingException.
 
         Parameters
         ----------
@@ -52,7 +65,7 @@ class ToolCallingAssistant:
 
         Returns
         -------
-        Response
+        AIMessage
             The response from the tool if a single tool call is successful.
 
         Raises
@@ -86,33 +99,37 @@ class ToolCallingAssistant:
         )
 
 
-def _init_tool_assistant_runnable(system_prompt, model_name, temperature, tools):
+def _init_tool_assistant_runnable(
+    system_prompt: str, model_name: str, temperature: float, tools: List[BaseModel]
+) -> Runnable:
     """
-    Initializes a tool-assisted runnable for a chat-based AI model.
+    Initializes a tool-assisted runnable for a language model with a specified system
+    prompt and configuration.
 
-    This function sets up a chat prompt template and binds a language model to a set of
-    tools, enabling the model to utilize these tools during its operation.
+    This function creates a chat prompt template using the provided system prompt and
+    initializes a language model with the specified model name and temperature. It then
+    binds the given tools to the language model, ensuring that the tools are used in a
+    strict and non-parallel manner. The resulting runnable is a combination of the chat
+    prompt and the tool-bound language model.
 
     Parameters
     ----------
     system_prompt : str
-        The system message content to initialize the chat prompt template.
+        The system prompt to be used in the chat prompt template.
     model_name : str
-        The name of the language model to be used.
+        The name of the language model to be initialized.
     temperature : float
-        The temperature setting for the language model, controlling the randomness of
-    its responses.
-    tools : list
-        A list of tools to be bound to the language model, allowing it to perform
-    specific tasks.
+        The temperature setting for the language model, affecting the randomness of its
+    outputs.
+    tools : List[BaseModel]
+        A list of tools to be bound to the language model.
 
     Returns
     -------
-    ChatPromptTemplate | ChatOpenAI
-        A combined object of the chat prompt template and the language model with bound
-    tools, ready for execution.
+    Runnable
+        A runnable object that combines the chat prompt template and the tool-bound
+    language model.
     """
-
     assistant_prompt = ChatPromptTemplate.from_messages(
         [
             SystemMessage(content=system_prompt),
@@ -128,7 +145,7 @@ def _init_tool_assistant_runnable(system_prompt, model_name, temperature, tools)
     return assistant_prompt | llm_with_tools
 
 
-def _read_system_prompt(filename, prompt_dir="prompts"):
+def _read_system_prompt(filename: str, prompt_dir: str = "prompts") -> str:
     """
     Reads the content of a system prompt file from a specified directory.
 
@@ -158,16 +175,16 @@ def _read_system_prompt(filename, prompt_dir="prompts"):
     return prompt
 
 
-def set_langchain_env(config):
+def set_langchain_env(config: Config) -> None:
     """
     Sets up the environment variables required for LangSmith by validating and assigning
     values from the provided configuration.
 
     Parameters
     ----------
-    config : object
-        An object containing the configuration settings for LangSmith. It must have the
-    attributes `langchain_project`, `langchain_tracing_v2`, `langchain_endpoint`, and
+    config : Config
+        A configuration object containing the necessary settings for LangSmith,
+    including `langchain_project`, `langchain_tracing_v2`, `langchain_endpoint`, and
     `langchain_user_agent`.
 
     Raises
@@ -175,7 +192,7 @@ def set_langchain_env(config):
     ValueError
         If any of the required environment variables (`LANGCHAIN_API_KEY`,
     `langchain_project`, `langchain_tracing_v2`, `langchain_endpoint`,
-    `langchain_user_agent`) are not set or are None.
+    `langchain_user_agent`) are not set in the configuration or environment.
 
     Notes
     -----
@@ -201,9 +218,13 @@ def set_langchain_env(config):
     logger.info("LangSmith environment set up!")
 
 
-def check_openai_env():
+def check_openai_env() -> None:
     """
     Checks for the presence of the 'OPENAI_API_KEY' environment variable.
+
+    This function verifies whether the 'OPENAI_API_KEY' is set in the environment
+    variables. If the key is not found, it raises a ValueError, indicating that the
+    environment variable must be set for the application to function correctly.
 
     Raises
     ------
@@ -213,24 +234,24 @@ def check_openai_env():
         raise ValueError("Set `OPENAI_API_KEY` as environment variable")
 
 
-def directory_tree_file_nodes(directory_tree):
+def directory_tree_file_nodes(directory_tree: DirectoryTree) -> Iterator[FileNode]:
     """
-    Yields file nodes from a directory tree.
+    Yields file nodes from a given directory tree.
 
-    This function iterates over the directory tree using the `walk` method and yields
-    each file node found in the tree. It is a generator function that provides a
-    convenient way to access all file nodes within the directory structure.
+    This function traverses a directory tree and yields each file node encountered. It
+    utilizes the `walk` method of the `DirectoryTree` class to perform a breadth-first
+    traversal, iterating over each directory and its files.
 
     Parameters
     ----------
-    directory_tree : object
-        An object representing the directory tree, which must have a `walk` method that
-    yields directory paths, subdirectories, and file nodes.
+    directory_tree : DirectoryTree
+        An instance of `DirectoryTree` that provides a method to traverse and yield file
+    nodes.
 
     Yields
     ------
     FileNode
-        Each file node found in the directory tree.
+        Each file node found in the directory tree during the traversal.
     """
     for _, _, file_nodes in directory_tree.walk():
         for node in file_nodes:

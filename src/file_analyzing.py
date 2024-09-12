@@ -1,8 +1,12 @@
+from typing import Union
+
 import dill
 import structlog
 from langchain_core.pydantic_v1 import BaseModel, Field
 
 import util
+from cfg import Config
+from directory_parsing import FileNode
 from util import ToolCallingAssistant, ToolCallingException
 
 logger = structlog.get_logger(__name__)
@@ -32,10 +36,16 @@ class FileAnalyzingTool(BaseModel):
 
 
 class FileAnalyzer(ToolCallingAssistant):
-    def __init__(self, system_prompt, tools, config, max_tool_call_retries=5):
+    def __init__(
+        self,
+        system_prompt: str,
+        tools: FileAnalyzingTool,
+        config: Config,
+        max_tool_call_retries: int = 5
+    ) -> None:
         super().__init__(system_prompt, tools, config, max_tool_call_retries)
 
-    def __call__(self, state):
+    def __call__(self, state: dict) -> dict:
         user_context = state["user_context"]
         repository = dill.loads(state["repository"])
         for node in util.directory_tree_file_nodes(repository.directory_tree):
@@ -64,27 +74,30 @@ class FileAnalyzer(ToolCallingAssistant):
         return {"repository": dill.dumps(repository)}
 
 
-def _compose_file_analyzer_message_from_node(node, user_context):
+def _compose_file_analyzer_message_from_node(
+    node: FileNode, user_context: Union[str, None]
+) -> str:
     """
-    Constructs a detailed message string from a given node and optional user context.
+    Constructs a detailed message string for file analysis based on a given file node
+    and optional user context.
 
-    This function generates a message that includes user-provided context, if available,
-    and details about a file represented by the node, such as its path and content. The
-    message is formatted to include clear delimiters for the start and end of the file
-    content.
+    This function generates a message that includes user-provided context, the file
+    path, and the file's content, formatted in a specific way to be used by a file
+    analysis tool.
 
     Parameters
     ----------
-    node : object
-        An object representing a file, which must have 'path' and 'content' attributes.
-    user_context : str or None
-        Optional high-level context provided by the user about the repository.
+    node : FileNode
+        An object representing the file to be analyzed, containing its path and content.
+    user_context : Union[str, None]
+        An optional string providing additional context about the repository from the
+    user.
 
     Returns
     -------
     str
         A formatted message string containing the user context, file path, and file
-    content.
+    content, ready for analysis.
     """
     message = ""
 

@@ -1,9 +1,12 @@
 import textwrap
+from typing import Iterator, List, Optional, Union
 
 import dill
 import structlog
 from langchain_core.pydantic_v1 import BaseModel, Field
 
+from call_graph_parsing import CallGraph, CallGraphNode
+from cfg import Config
 from util import ToolCallingAssistant, ToolCallingException
 
 logger = structlog.get_logger(__name__)
@@ -26,10 +29,16 @@ class DocstringWritingTool(BaseModel):
 
 
 class DocstringWriter(ToolCallingAssistant):
-    def __init__(self, system_prompt, tools, config, max_tool_call_retries=5):
+    def __init__(
+        self,
+        system_prompt: str,
+        tools: DocstringWritingTool,
+        config: Config,
+        max_tool_call_retries: int = 5,
+    ) -> None:
         super().__init__(system_prompt, tools, config, max_tool_call_retries)
 
-    def __call__(self, state):
+    def __call__(self, state: dict) -> dict:
         user_context = state["user_context"]
         repository = dill.loads(state["repository"])
         for nodes_at_depth in _traverse_by_depth_reversed(repository.call_graph):
@@ -57,26 +66,35 @@ class DocstringWriter(ToolCallingAssistant):
 
 
 def _get_proximate_nodes(
-    node, call_chain_context_up=None, call_chain_context_down=None
-):
+    node: CallGraphNode,
+    call_chain_context_up: Optional[int] = None,
+    call_chain_context_down: Optional[int] = None
+) -> List[CallGraphNode]:
     """
-    Retrieves the proximate nodes in a call graph by traversing both upward and downward
-    from a given node.
+    Retrieves nodes that are proximate to a given node in a call graph, including both
+    parent and child nodes up to specified depths.
+
+    This function collects nodes that are either ancestors or descendants of the
+    specified `node` within a call graph, based on the provided depth limits for upward
+    and downward traversal. It combines these nodes into a single list, ensuring no
+    duplicates.
 
     Parameters
     ----------
-    node : Node
-        The starting node from which to traverse the call graph.
-    call_chain_context_up : int, optional
-        The maximum depth to traverse upward. If None, traverses all ancestors.
-    call_chain_context_down : int, optional
-        The maximum depth to traverse downward. If None, traverses all descendants.
+    node : CallGraphNode
+        The node from which to find proximate nodes in the call graph.
+    call_chain_context_up : Optional[int], optional
+        The maximum depth for traversing upwards to find parent nodes. If None, all
+    ancestors are included.
+    call_chain_context_down : Optional[int], optional
+        The maximum depth for traversing downwards to find child nodes. If None, all
+    descendants are included.
 
     Returns
     -------
-    list of Node
-        A list of unique nodes that are either ancestors or descendants of the starting
-    node, up to the specified depths.
+    List[CallGraphNode]
+        A list of unique `CallGraphNode` objects that are either parents or children of
+    the given node, up to the specified depths.
     """
     parent_nodes = [
         node for depth, node in node.traverse_up(
@@ -92,26 +110,36 @@ def _get_proximate_nodes(
 
 
 def _get_proximate_node_definitions(
-    node, call_chain_context_up, call_chain_context_down
-):
+    node: CallGraphNode,
+    call_chain_context_up: Optional[int] = None,
+    call_chain_context_down: Optional[int] = None,
+) -> List[str]:
     """
-    Retrieves the definitions of proximate nodes in a call graph, excluding those that
-    are part of the class definition of the current node.
+    Retrieves the definitions of nodes that are proximate to a given node in a call
+    graph, excluding those whose signatures are found in the class definition.
+
+    This function first identifies nodes that are proximate to the specified `node` by
+    calling `_get_proximate_nodes`, which considers both upward and downward traversal
+    in the call graph. It then extracts and dedents the definitions of these nodes. If
+    the `node` is associated with a class, it filters out any node definitions whose
+    signatures are present in the class definition to avoid redundancy.
 
     Parameters
     ----------
-    node : Node
-        The node from which to retrieve proximate node definitions.
-    call_chain_context_up : int
-        The maximum depth to traverse upward in the call graph.
-    call_chain_context_down : int
-        The maximum depth to traverse downward in the call graph.
+    node : CallGraphNode
+        The node for which proximate node definitions are to be retrieved.
+    call_chain_context_up : Optional[int], optional
+        The maximum depth for traversing upwards to find parent nodes. If None, all
+    ancestors are included.
+    call_chain_context_down : Optional[int], optional
+        The maximum depth for traversing downwards to find child nodes. If None, all
+    descendants are included.
 
     Returns
     -------
-    list of str
+    List[str]
         A list of dedented string definitions of proximate nodes, excluding those whose
-    signatures are found in the class definition of the current node.
+    signatures are found in the class definition.
     """
     proximate_nodes = _get_proximate_nodes(
         node, call_chain_context_up, call_chain_context_down
@@ -130,32 +158,35 @@ def _get_proximate_node_definitions(
     return proximate_node_definitions
 
 
-def _compose_docstring_writer_message_from_node(node, user_context, config):
+def _compose_docstring_writer_message_from_node(
+    node: CallGraphNode, user_context: Union[str, None], config: Config
+) -> str:
     """
-    Composes a detailed message for generating a new docstring and summary for a given
-    function node.
+    Composes a detailed message for generating a new docstring and summary for a
+    function node in a call graph.
 
     This function constructs a message that includes the current function's definition,
-    any user-provided context, and definitions of proximate functions in the call chain.
-    It also includes the class definition if the function is a method. The message is
-    intended to guide the creation of a new docstring and summary.
+    any user-provided context, and definitions of proximate functions. It also includes
+    the class definition if the function is a method. The message is formatted to guide
+    the creation of a new docstring and summary for the function.
 
     Parameters
     ----------
-    node : Node
-        The node representing the function for which the docstring and summary are to be
-    generated.
-    user_context : str or None
-        Optional high-level context provided by the user about the repository.
+    node : CallGraphNode
+        The node representing the function for which the message is being composed.
+    user_context : Union[str, None]
+        Optional user-provided context about the repository, which is included in the
+    message if available.
     config : Config
-        Configuration object containing parameters for call chain context.
+        Configuration object containing settings for call chain context, such as the
+    depth of context to include.
 
     Returns
     -------
     str
-        A composed message string that includes the function definition, user context,
-    proximate function definitions, and class definition if applicable."""
-
+        A formatted message string that includes the function definition, user context,
+    proximate function definitions, and class definition if applicable, intended to
+    assist in writing a new docstring and summary."""
     proximate_node_definitions = _get_proximate_node_definitions(
         node, config.call_chain_context_up, config.call_chain_context_down
     )
@@ -191,27 +222,21 @@ def _compose_docstring_writer_message_from_node(node, user_context, config):
     return message
 
 
-def _traverse_by_depth_reversed(call_graph):
+def _traverse_by_depth_reversed(call_graph: CallGraph) -> Iterator[List[CallGraph]]:
     """
-    Traverse the nodes of a call graph in reverse order of their depth.
-
-    This function iterates over the nodes of a call graph, yielding nodes grouped by
-    their depth in descending order. It first checks if all nodes have a computed depth
-    value, raising a RuntimeError if any node lacks this information. It then organizes
-    nodes into a dictionary keyed by their depth and iterates from the maximum depth to
-    zero, yielding nodes at each depth level.
+    Traverse the call graph by depth in reverse order, yielding nodes at each depth
+    level.
 
     Parameters
     ----------
     call_graph : CallGraph
-        The call graph containing nodes to be traversed. Each node must have a 'depth'
-    attribute.
+        The call graph to traverse, which must have depth values computed for all nodes.
 
     Yields
     ------
-    list of Node
-        A list of nodes at the current depth level, starting from the maximum depth and
-    proceeding to zero.
+    Iterator[List[CallGraph]]
+        An iterator over lists of nodes, where each list contains nodes at the same
+    depth level, starting from the maximum depth to zero.
 
     Raises
     ------

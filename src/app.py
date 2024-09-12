@@ -6,12 +6,14 @@ from langgraph.graph import END, StateGraph
 
 import directory_parsing as dp
 import util
+from cfg import Config
 from docstring_writing import DocstringWriter, DocstringWritingTool
 from feature_analyzing import FeatureAnalyzer, FeatureAnalyzingTool
 from file_analyzing import FileAnalyzer, FileAnalyzingTool
 from readme_writing import ReadMeWriter, ReadMeWritingTool
 from setup_instructing import SetupInstructionTool, SetupInstructor
 from usage_instructing import UsageInstructionTool, UsageInstructor
+from util import Repository
 
 logger = structlog.get_logger(__name__)
 
@@ -26,7 +28,7 @@ class GraphState(TypedDict):
 
 
 class DocumentationWriter:
-    def __init__(self, config):
+    def __init__(self, config: Config) -> None:
         util.check_openai_env()
 
         if config.use_langsmith:
@@ -35,24 +37,23 @@ class DocumentationWriter:
         self.config = config
         self.app = self._build_app()
 
-    def _build_app(self):
+    def _build_app(self) -> StateGraph:
         """
-        Constructs and configures the application workflow for the DocumentationWriter.
+        Constructs a state graph for the documentation writing application.
 
         This method initializes various components required for the documentation
-        writing process, including docstring writing, file analysis, feature analysis,
-        setup instruction, usage instruction, and README writing. It then organizes
-        these components into a state graph, defining the sequence of operations and
-        dependencies between them. The graph is compiled into an executable application
-        workflow.
+        writing process, such as docstring writing, file analysis, feature analysis,
+        setup instruction, usage instruction, and README writing. It then constructs a
+        state graph by adding these components as nodes and defining the sequence of
+        operations through directed edges. The state graph is compiled and returned for
+        execution.
 
         Returns
         -------
         StateGraph
-            A compiled state graph representing the application workflow for the
-        DocumentationWriter.
+            A compiled state graph representing the sequence of operations for the
+        documentation writing application.
         """
-
         docstring_writer = DocstringWriter(
             "docstring_writer.txt", DocstringWritingTool, self.config
         )
@@ -91,17 +92,17 @@ class DocumentationWriter:
 
         return builder.compile()
 
-    def run_app(self, repository, config):
+    def run_app(self, repository: Repository, config: Config) -> None:
         """
-        Executes the DocumentationWriter application to process a repository based on
-        the provided configuration.
+        Executes the main application logic for processing a repository based on the
+        provided configuration.
 
-        This method checks if the repository's directory tree is under version control
-        when the return mode is set to 'modify_existing'. If not, it prompts the user
-        for confirmation before proceeding. It then serializes the repository and user
-        context, invokes the application to process these inputs, and deserializes the
-        resulting state. Depending on the return mode, it either constructs a new
-        directory structure or modifies existing Python files in the repository.
+        This method checks the configuration to determine whether to modify existing
+        files or create new ones. If the configuration specifies modifying existing
+        files and the repository is not under version control, it prompts the user for
+        confirmation. It then invokes the application logic using the provided
+        repository and configuration, processes the final state, and either constructs
+        new directories or modifies existing files based on the configuration.
 
         Parameters
         ----------
@@ -109,15 +110,11 @@ class DocumentationWriter:
             The repository object containing the directory tree and call graph to be
         processed.
         config : Config
-            The configuration object specifying user context, return mode, and other
-        settings for the application.
+            The configuration object specifying user context, directory paths, and
+        operation modes.
 
         Returns
         -------
-        None
-
-        Raises
-        ------
         None
         """
         if (
